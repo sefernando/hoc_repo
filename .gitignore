@@ -1,0 +1,5 @@
+bin
+logs
+.idea
+*.env
+client_config.json

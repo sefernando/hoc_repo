@@ -1,0 +1,19 @@
+{
+  "name": "aoh_service",
+  "path": "/aoh_service",
+  "attributes": {
+    "default-role": [
+      "aoh_service"
+    ]
+  },
+  "realmRoles": [
+    "aoh_service"
+  ],
+  "clientRoles": {},
+  "subGroups": [],
+  "access": {
+    "view": true,
+    "manage": true,
+    "manageMembership": true
+  }
+}

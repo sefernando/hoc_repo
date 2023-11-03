@@ -1,0 +1,7 @@
+{
+  "name": "aoh_service",
+  "description": "This is the service account role for 'aoh_service.'",
+  "composite": false,
+  "clientRole": false,
+  "containerId": "ar2"
+}

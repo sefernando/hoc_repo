@@ -1,0 +1,34 @@
+version: "3.7"
+
+services:
+    # TODO: Replace 'service-name' with the name of your service, this docker-compose yaml syntax that refers to
+    # the service that is being containerized
+    service-name:
+        # TODO: If your service is comprised of multiple packages, they will each have their own containers
+        # and so the container and image names will have to be different from one another - you should add
+        # extra variables to add suffixes to the service name to distinguish the packages
+        container_name: ${SERVICE_NAME}
+        # TODO: If your service is comprised of multiple packages, they will each have their own containers
+        # and so the container and image names will have to be different from one another - you should add
+        # extra variables to add suffixes to the service name to distinguish the packages
+        image: ${SERVICE_NAME}:${TAG}
+        build:
+            # TODO: Replace 'service' with the name of your service. Note that if you have multiple packages,
+            # each with its own Dockerfile, you will have to add more 'services' in this docker-compose file, each
+            # with a different path pointing to the appropriate Dockerfile.
+            dockerfile: ./docker/service.Dockerfile
+            context: .
+        environment:
+            # TODO: Add or remove environment variables that you need for your service
+            - APP_PORT=${APP_PORT}
+            - LOG_LEVEL=${LOG_LEVEL}
+            - HASURA_HOST=${HASURA_HOST}
+            - HASURA_PORT=${HASURA_PORT}
+            - GQL_ENDPOINT=${GQL_ENDPOINT}
+            - IAM_URL=${IAM_URL}
+            - IAM_CLIENT_ID=${IAM_CLIENT_ID}
+            - IAM_CLIENT_SECRET=${IAM_CLIENT_SECRET}
+            - IAM_REALM=${IAM_REALM}
+        ports:
+            # TODO: Add or remove environment variables that you need for your service
+            - ${APP_PORT}:${APP_PORT}

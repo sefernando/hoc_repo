@@ -1,0 +1,149 @@
+# Please read up on (link to doc) to understand our branching strategy.
+name: Build, Publish, Deploy
+
+env:
+    # TODO (DevOps): Replace with the name of your service
+    service_name: aoh-service
+    # TODO (DevOps): Replace with the name of your repository
+    image_prefix: ghcr.io/mssfoobar/aoh-service-template
+    # TODO (DevOps): Replace with the name of your infra repository
+    manifest_repo: mssfoobar/aoh-service-infra-template
+    # TODO (DevOps): Replace with the name of your infra environment
+    infra_name: dev2
+    container_registry: ghcr.io
+
+on:
+    workflow_dispatch:
+    release: # create GitHub releases on the 'main' branch and tag them
+    push:
+        branches:
+            - "release/*" # create or commit to release/* branches for QA/alpha testing environment deployment
+            - develop # commit to develop branch branch for preview/development environment deployment
+        paths:
+            - "**"
+            - "!.github/**"
+            - "!README.md"
+
+jobs:
+    prep:
+        name: Prepare Environment Variables
+        runs-on: ubuntu-latest
+        outputs:
+            image_prefix: ${{ steps.add_variables.outputs.image_prefix }}
+
+        steps:
+            - id: add_variables
+              run: |
+                  echo "image_prefix=${{ env.image_prefix }}" >> $GITHUB_OUTPUT
+
+    build-and-publish-image:
+        name: Build & Publish Container Image
+        runs-on: ubuntu-latest
+        needs: prep
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    # TODO (DevOps): Change the names here if necessary
+                    # For example, for the tutorial, you would rename 'service' to 'solve-all-your-problems'
+                    # in the following 3 lines
+                    - dockerfile: ./docker/service.Dockerfile
+                      image: ${{ needs.prep.outputs.image_prefix }}
+                      name: service
+
+                    ## TODO (DevOps): Add more Dockerfiles and change their names as necessary (e.g. if your service
+                    ## has multiple packages, each with its own Dockerfile)
+                    # - dockerfile: ./docker/entity-manager.Dockerfile
+                    #  image: ${{ needs.prep.outputs.image_prefix }}-entity-manager
+                    #  name: entity-manager
+        permissions:
+            contents: read
+            packages: write
+
+        steps:
+            - name: "Checkout repository"
+              uses: actions/checkout@v3.3.0
+              with:
+                  path: ./src
+
+            - name: "${{ matrix.name }} - Set app version"
+              run: |
+                  cd ./src
+                  git_hash=$(git rev-parse --short "$GITHUB_SHA")
+                  echo "git_hash=${git_hash}"
+                  image_tag=${GITHUB_REF##*/}-${git_hash}
+                  cd ../
+                  mkdir -p ./tag
+                  echo ${image_tag}  > ./tag/${{ matrix.name }}
+                  echo "wrote ${image_tag} for app ${{ matrix.name }}"
+
+            - name: "Log in to the Container registry"
+              uses: docker/login-action@v2.1.0
+              with:
+                  registry: ${{ env.container_registry }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.PAT }}
+
+            - name: "Build & push image - ${{ matrix.name }}"
+              run: |
+                  image_tag=$(cat ./tag/${{ matrix.name }})
+                  echo "image_tag=${image_tag}"
+                  cd ./src
+                  docker build -t "${{ matrix.image }}:${image_tag}" -f ${{ matrix.dockerfile }} .
+                  docker push "${{ matrix.image }}:${image_tag}"
+
+            - name: "Upload tag info"
+              uses: actions/upload-artifact@v3
+              with:
+                  name: app-tag
+                  path: ./tag
+                  if-no-files-found: error
+                  retention-days: 3
+
+    update-manifest-file:
+        runs-on: ubuntu-latest
+        needs:
+            - prep
+            - build-and-publish-image
+
+        steps:
+            - name: "Checkout manifest repository"
+              uses: actions/checkout@v3
+              with:
+                  repository: ${{ env.manifest_repo }}
+                  path: ./src
+                  token: ${{ secrets.PAT }}
+                  fetch-depth: 0
+                  persist-credentials: true
+
+            - name: "Download tag info"
+              uses: actions/download-artifact@v3
+              continue-on-error: false
+              with:
+                  name: app-tag
+                  path: ./tag
+
+            - name: "Update manifest yml - ${{ env.image_prefix }}"
+              run: |
+                  dir=$PWD
+                  cd ./tag
+                  for file in *
+                  do
+                    new_tag=${{ needs.prep.outputs.image_prefix }}"_"$file":"$(cat $file)
+                    echo $new_tag
+                    cd $dir
+                    cd ./src/argocd/${{ env.image_prefix }}/manifests/${{ env.service_name }} 
+                    old_tag=$(cat $file-deployment.yml | grep image: | head -n 1 | awk '{print $2}')
+                    echo $old_tag
+                    sed -i "s|$old_tag|$new_tag|g" $file-deployment.yml
+                    cd $dir
+                    cd ./tag
+                  done
+
+            - name: "Commit & push changes"
+              run: |
+                  cd ./src
+                  git config --local user.name 'github action'
+                  git config --local user.email 'action@github.com'
+                  git commit -m "[auto] version updated" -a
+                  git push https://${{ secrets.PAT }}@github.com/${{ env.manifest_repo }}.git
